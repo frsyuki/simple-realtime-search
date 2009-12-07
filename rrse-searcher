@@ -17,9 +17,7 @@ def Marshal.load(value) value end  # workaround for get_multi
 db = MemCache.new
 db.servers = [db_addr.join(':')]
 
-start = Time.now
 raw = db.get("i#{word.downcase}", true)
-puts Time.now - start
 docids = (raw || "").unpack('Q*')
 docids.each_slice(32) {|ids|
 	db.get_multi( ids.map{|id|"b#{id}"} ).each_pair do |bid, body|

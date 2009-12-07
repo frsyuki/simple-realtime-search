@@ -18,15 +18,9 @@ mgr.close
 sp = MessagePack::RPC::SessionPool.new
 round_robin = 0
 
-start = Time.now
 TweetStream::Client.new(user, pass).sample do |stat|
 	host, port = nodes[ (round_robin+=1) % nodes.size ]
 	sp.get_session(host, port).call(:indexText, stat[:id], stat[:text])
 	puts "#{round_robin}\tindexing on #{host}:#{port}: (id=#{stat[:id]}) #{stat[:text]}"
-	if round_robin > 50000
-		time = Time.now - start
-		puts  "ok. (#{time})"
-		exit 0
-	end
 end
 
