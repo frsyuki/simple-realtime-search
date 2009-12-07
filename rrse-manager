@@ -1,0 +1,37 @@
+#!/usr/bin/env ruby -rubygems
+require 'msgpack/rpc'
+
+INDEXER_TIMEOUT = 5
+
+class RRSEManager
+	def initialize(svr, db_addr)
+		@db_addr = db_addr
+		@nodes = {}
+		svr.start_timer(1, true) do
+			@nodes.reject! {|addr, term| (@nodes[addr] = term - 1) <= 0 }
+		end
+	end
+	def getDBServer
+		@db_addr
+	end
+	def getNodes
+		@nodes.keys
+	end
+	def indexerKeepalive(host, port)
+		@nodes[ [host,port] ] = INDEXER_TIMEOUT
+		true
+	end
+end
+
+port = ARGV.shift
+db_host, db_port = (ARGV.shift || "").split(':')
+if !ARGV.empty? || db_port.nil?
+	puts "Usage: #{$0} <listen port> <db address:port>"
+	exit 1
+end
+
+svr = MessagePack::RPC::Server.new
+obj = RRSEManager.new(svr, [db_host, db_port.to_i])
+svr.listen('<any>', port.to_i, obj)
+svr.run
+

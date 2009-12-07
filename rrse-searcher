@@ -1,0 +1,30 @@
+#!/usr/bin/env ruby -rubygems
+require 'msgpack/rpc'
+require 'memcache'
+
+mgr_host, mgr_port = (ARGV.shift || "").split(':')
+word = ARGV.shift
+if !ARGV.empty? || mgr_port.nil? || word.nil?
+	puts "Usage: #{$0} <manager address:port> <word>"
+	exit 1
+end
+
+mgr = MessagePack::RPC::Client.new(mgr_host, mgr_port.to_i)
+db_addr = mgr.call(:getDBServer)
+mgr.close
+
+def Marshal.load(value) value end  # workaround for get_multi
+db = MemCache.new
+db.servers = [db_addr.join(':')]
+
+start = Time.now
+raw = db.get("i#{word.downcase}", true)
+puts Time.now - start
+docids = (raw || "").unpack('Q*')
+docids.each_slice(32) {|ids|
+	db.get_multi( ids.map{|id|"b#{id}"} ).each_pair do |bid, body|
+		puts "docid=#{bid[1..-1]}\t#{body}"
+	end
+}
+puts "#{docids.size} entries."
+

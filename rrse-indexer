@@ -1,0 +1,48 @@
+#!/usr/bin/env ruby -rubygems
+require 'msgpack/rpc'
+require 'memcache'
+
+class RRSEIndexer
+	def initialize(svr, mgr, my_addr, db_addr)
+		@svr = svr
+		@db = MemCache.new
+		@db.servers = [db_addr.join(':')]
+		@svr.start_timer(1, true) {
+			mgr.notify(:indexerKeepalive, *my_addr)
+		}
+	end
+	def indexText(docid, body)
+		@svr.submit do
+			if @db.add("b#{docid}", body, 0, true) != "STORED\r\n"
+				return nil
+			end
+			id64 = [docid].pack('Q')
+			words = body.split(/[\s\,\.\!\?]+/).reject {|w| !(2..15).include?(w.length) }.uniq
+			words.each {|word| word.downcase! }
+			puts "index: #{docid} => #{words.join(', ')}"
+			words.each {|word|
+				if @db.append("i#{word}", id64) != "STORED\r\n"
+					@db.add("i#{word}", "", 0, true)
+					@db.append("i#{word}", id64)
+				end
+			}
+		end
+		true
+	end
+end
+
+mgr_host, mgr_port = (ARGV.shift || "").split(':')
+my_host,  my_port  = (ARGV.shift || "").split(':')
+if !ARGV.empty? || mgr_port.nil? || my_port.nil?
+	puts "Usage: #{$0} <manager address:port> <my address:port>"
+	exit 1
+end
+
+svr = MessagePack::RPC::Server.new
+mgr = svr.get_session(mgr_host, mgr_port.to_i)
+db_addr = mgr.call(:getDBServer)
+
+obj = RRSEIndexer.new(svr, mgr, [my_host,my_port.to_i], db_addr)
+svr.listen('<any>', my_port.to_i, obj)
+svr.run
+
